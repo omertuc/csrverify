@@ -1,0 +1,214 @@
+package main
+
+import (
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
+)
+
+func getCSRPublicKey(pembytes []byte) (any, error, []byte) {
+	pemBlock, rest := pem.Decode(pembytes)
+	if pemBlock == nil {
+		return nil, nil, nil
+	}
+
+	req, err := x509.ParseCertificateRequest(pemBlock.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("Error parsing DER: %v", err), nil
+	}
+
+	check := req.CheckSignature()
+	if check != nil {
+		return nil, fmt.Errorf("Error checking signature: %v", check), nil
+	}
+
+	return req.PublicKey, nil, rest
+}
+
+func getCertificatePublicKey(pembytes []byte) (any, error, []byte) {
+	pemBlock, rest := pem.Decode(pembytes)
+	if pemBlock == nil {
+		return nil, nil, nil
+	}
+
+	cert, err := x509.ParseCertificate(pemBlock.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("Error parsing DER: %v", err), nil
+	}
+
+	return cert.PublicKey, nil, rest
+}
+
+func main() {
+	remainingCSRBundle := []byte(csrPEMs)
+
+	for {
+		reqPub, err, rest := getCSRPublicKey(remainingCSRBundle)
+		if err != nil {
+			fmt.Println("Error getting CSR public key:", err)
+			return
+		}
+
+		if reqPub == nil {
+			break
+		}
+
+		remainingCSRBundle = rest
+
+		fmt.Println("CSR Public Key:", reqPub)
+
+		remainingCertBundle := []byte(kubeletCertPEMS)
+
+		for {
+			kubeletPub, err, rest := getCertificatePublicKey(remainingCertBundle)
+			if err != nil {
+				fmt.Println("Error getting kubelet public key:", err)
+				return
+			}
+
+			remainingCertBundle = rest
+
+			if kubeletPub == nil {
+				break
+			}
+
+			fmt.Println("\tKubelet Public Key:", kubeletPub)
+		}
+
+	}
+
+}
+
+// oc get csr -ojson | jq '.items[].spec.request' -r | base64 -d
+const csrPEMs string = `-----BEGIN CERTIFICATE REQUEST-----
+MIH6MIGhAgEAMD8xGTAXBgNVBAoTEHN5c3RlbTpvdm4tbm9kZXMxIjAgBgNVBAMT
+GXN5c3RlbTpvdm4tbm9kZTpyZWNpcGllbnQwWTATBgcqhkjOPQIBBggqhkjOPQMB
+BwNCAARfORn1j4U/NEXzPKQLaAvUM1tNt5T4EfqqVHVKQ1vyc/dRj6msqQxz+m3g
+Of1aG+APAr4vhegz3wfcOSJ1fxU5oAAwCgYIKoZIzj0EAwIDSAAwRQIgQv7AMwfF
+j8uMHmIcNJDZeAPsEXocoG1+4gpRV+hjSOECIQCo4GJSPc7/W2D9dwEFDpVxi8K5
+bT9GCi3lYNcRiDPMyg==
+-----END CERTIFICATE REQUEST-----
+-----BEGIN CERTIFICATE REQUEST-----
+MIH2MIGcAgEAMDoxFjAUBgNVBAoTDXN5c3RlbTptdWx0dXMxIDAeBgNVBAMTF3N5
+c3RlbTptdWx0dXM6cmVjaXBpZW50MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE
+aeJm3feH1a1pX+O+x0G7zPntynmp9NhPe5nIUxvW0eGw0ttLl+D8VKl7DeFphw9Z
+0VSxvL1rsoP443vVToMF06AAMAoGCCqGSM49BAMCA0kAMEYCIQDq6YiGO01bj1nZ
+Z9FXF7Z1A6iJdLyFxI8EzDRvE6YCuAIhAKt8xz+5DslR6iwdJOUCyckhvg7yAw4t
+EptTeHYKI0B3
+-----END CERTIFICATE REQUEST-----
+-----BEGIN CERTIFICATE REQUEST-----
+MIH7MIGhAgEAMD8xGTAXBgNVBAoTEHN5c3RlbTpvdm4tbm9kZXMxIjAgBgNVBAMT
+GXN5c3RlbTpvdm4tbm9kZTpyZWNpcGllbnQwWTATBgcqhkjOPQIBBggqhkjOPQMB
+BwNCAARoJxJA/L89xB7o+ZQ++WeAofZ6q9YTLH5kDxLRg4KtmmNtTaNI2oQ8yABC
+bBE19csnFuIPu8HGuTHXK9zuBZv7oAAwCgYIKoZIzj0EAwIDSQAwRgIhAKaouS6T
+ccQyFMDXxdMLx/acPQcP98cJtJ30/Wfn80YBAiEA6rUtRbl8PcMyYvTMBdfPvny5
+YKFs5/5OuZjWO6YEBr0=
+-----END CERTIFICATE REQUEST-----
+-----BEGIN CERTIFICATE REQUEST-----
+MIH5MIGhAgEAMD8xGTAXBgNVBAoTEHN5c3RlbTpvdm4tbm9kZXMxIjAgBgNVBAMT
+GXN5c3RlbTpvdm4tbm9kZTpyZWNpcGllbnQwWTATBgcqhkjOPQIBBggqhkjOPQMB
+BwNCAATsXFiE7x2MmEJZvoF23TIxZ1mDx8Xap7a+MFA1iI7kGa3ekXQibhw6h7An
+tql8YT9numjW5S2S4c+wqM6AvTYooAAwCgYIKoZIzj0EAwIDRwAwRAIgMH14D5PC
+0SVtPxB7ahfZcKLnxUOtvDvVUBskRl/yH3ECIAVbY1HPElZdoZjJUkPzD8j2lhNP
+xHfgev749Ca+aD/B
+-----END CERTIFICATE REQUEST-----`
+
+// Read the kubelet client public key from
+// /var/lib/kubelet/kubelet-client-current.pem or the kubelet serving
+// public key from /var/lib/kubelet/kubelet-server-current.pem
+const kubeletCertPEMS string = `-----BEGIN CERTIFICATE-----
+MIICeTCCAWGgAwIBAgIQEo0J4SlkoooW2AxkVBDI3TANBgkqhkiG9w0BAQsFADAt
+MRIwEAYDVQQLEwlvcGVuc2hpZnQxFzAVBgNVBAMTDmt1YmVsZXQtc2lnbmVyMB4X
+DTI0MDMyNTExMDIwOVoXDTI0MDMyNjExMDAyM1owNzEVMBMGA1UEChMMc3lzdGVt
+Om5vZGVzMR4wHAYDVQQDExVzeXN0ZW06bm9kZTpyZWNpcGllbnQwWTATBgcqhkjO
+PQIBBggqhkjOPQMBBwNCAARXqdlfUP46g1pgHa0SLM3RoS582ZuV/5oJCv1/eh1V
+ZcZBcY3ot26OXkBc5IC3zdlAALZVh+h55veqgXzXAFxPo1YwVDAOBgNVHQ8BAf8E
+BAMCB4AwEwYDVR0lBAwwCgYIKwYBBQUHAwIwDAYDVR0TAQH/BAIwADAfBgNVHSME
+GDAWgBSUfhce3wk0PfpbOsqhIf2BFP2gYDANBgkqhkiG9w0BAQsFAAOCAQEAhLFn
+Rz6ZILZcl49ys7dhXjgtbFcFFU1xPE/CQ3djle/GddAgw6sl71jjNXmP4ZHLjQnV
+4bi5Fod7L65zsfkskMZp5Wg0EkS+ceDq28HlCQIWMlSSvyvaT1EYz3ogyxOPYoFk
+dqEzwYbJbvTouzV4UmDF6HMhcZd0J/5KL+mvh7zlkaEs0MHa17PHausAVDTapdm6
+hkfDTKUKXSguGteRe2ED+XYCAh/62v42iqIXOBZU7Rze2dFUk8paiiGqLG+KytT4
+JHf41V4CECkr4nV/PKkZ0uNTzZkQT0i40PCKS/lIdegwlNpsaGImQ9BDjnx/BHrl
+aTQteDuH7wSqljy5Iw==
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIICcjCCAVqgAwIBAgIQHk7f/YicxCrk52aYpOvcGzANBgkqhkiG9w0BAQsFADAm
+MSQwIgYDVQQDDBtrdWJlLWNzci1zaWduZXJfQDE3MTE1NDg2MzgwHhcNMjQwMzI3
+MTQyNTU0WhcNMjQwNDI2MTQxMDM4WjA3MRUwEwYDVQQKEwxzeXN0ZW06bm9kZXMx
+HjAcBgNVBAMTFXN5c3RlbTpub2RlOnJlY2lwaWVudDBZMBMGByqGSM49AgEGCCqG
+SM49AwEHA0IABOPrLFhFtMMcS5JW3yRIVgLLQa+yP0zA8KPt/6xEJ8mIf74YV1ss
+G0HHPmIakipeUVXKgZrtjRb5w0hRjmm4D7ijVjBUMA4GA1UdDwEB/wQEAwIHgDAT
+BgNVHSUEDDAKBggrBgEFBQcDAjAMBgNVHRMBAf8EAjAAMB8GA1UdIwQYMBaAFG4n
+aYqeMUKIwb1HjE7Fl+Rnf+CJMA0GCSqGSIb3DQEBCwUAA4IBAQAzjAI5WeS4IN9x
+mLSffeIhw/Z8ja4g3opQgXjfdA8gA7pL1/WNKJgKPLK2A+jOXA2BVMFCsaCwU4dj
+koN4s/09V4E89aR10eFpTAsxDSsWcP+6smNAWxd1Yek39im3Gwoal19b7jQjTNPf
+fB5HR4BfvZ5foss6yNt9Hq3DF83rvaygljDyYpnXPdjpiOx/XryP1SQ3v2/aIFZA
+ffKoA7EFVtaJRaU2Vd2CFmAoKDTXvrfbdfUs/9TJEJ2s1d6fAvFbjgDFdv/4JH6Y
+TFCswLhuRO14+4kC4517ETZBcI+qKwgcvVaFCVH/qjeKhO5h/ZXVcOp2QhPi+gmv
+BhvZxQxs
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIICcjCCAVqgAwIBAgIQHk7f/YicxCrk52aYpOvcGzANBgkqhkiG9w0BAQsFADAm
+MSQwIgYDVQQDDBtrdWJlLWNzci1zaWduZXJfQDE3MTE1NDg2MzgwHhcNMjQwMzI3
+MTQyNTU0WhcNMjQwNDI2MTQxMDM4WjA3MRUwEwYDVQQKEwxzeXN0ZW06bm9kZXMx
+HjAcBgNVBAMTFXN5c3RlbTpub2RlOnJlY2lwaWVudDBZMBMGByqGSM49AgEGCCqG
+SM49AwEHA0IABOPrLFhFtMMcS5JW3yRIVgLLQa+yP0zA8KPt/6xEJ8mIf74YV1ss
+G0HHPmIakipeUVXKgZrtjRb5w0hRjmm4D7ijVjBUMA4GA1UdDwEB/wQEAwIHgDAT
+BgNVHSUEDDAKBggrBgEFBQcDAjAMBgNVHRMBAf8EAjAAMB8GA1UdIwQYMBaAFG4n
+aYqeMUKIwb1HjE7Fl+Rnf+CJMA0GCSqGSIb3DQEBCwUAA4IBAQAzjAI5WeS4IN9x
+mLSffeIhw/Z8ja4g3opQgXjfdA8gA7pL1/WNKJgKPLK2A+jOXA2BVMFCsaCwU4dj
+koN4s/09V4E89aR10eFpTAsxDSsWcP+6smNAWxd1Yek39im3Gwoal19b7jQjTNPf
+fB5HR4BfvZ5foss6yNt9Hq3DF83rvaygljDyYpnXPdjpiOx/XryP1SQ3v2/aIFZA
+ffKoA7EFVtaJRaU2Vd2CFmAoKDTXvrfbdfUs/9TJEJ2s1d6fAvFbjgDFdv/4JH6Y
+TFCswLhuRO14+4kC4517ETZBcI+qKwgcvVaFCVH/qjeKhO5h/ZXVcOp2QhPi+gmv
+BhvZxQxs
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIIClTCCAX2gAwIBAgIQKe+28vLWAxOLc83NdThzbTANBgkqhkiG9w0BAQsFADAt
+MRIwEAYDVQQLEwlvcGVuc2hpZnQxFzAVBgNVBAMTDmt1YmVsZXQtc2lnbmVyMB4X
+DTI0MDMyNTExMDIxN1oXDTI0MDMyNjExMDAyM1owNzEVMBMGA1UEChMMc3lzdGVt
+Om5vZGVzMR4wHAYDVQQDExVzeXN0ZW06bm9kZTpyZWNpcGllbnQwWTATBgcqhkjO
+PQIBBggqhkjOPQMBBwNCAAQ4wdf1l2wVf8HOCBO3cPJw+ravOTgZ3hIr0v+MD9H+
+XQRsmv9ODec/i7WQ6bibXP1qzFh/wXvCYibU1NxqoEspo3IwcDAOBgNVHQ8BAf8E
+BAMCB4AwEwYDVR0lBAwwCgYIKwYBBQUHAwEwDAYDVR0TAQH/BAIwADAfBgNVHSME
+GDAWgBSUfhce3wk0PfpbOsqhIf2BFP2gYDAaBgNVHREEEzARgglyZWNpcGllbnSH
+BMCof2MwDQYJKoZIhvcNAQELBQADggEBABrb03uQheopb6+fmdO55E48G8Jmy5iG
+qHMeTn0FPYJbkO6tOfC27yTEqD6iC9SnWRw/N13Q70dZj1yrIOWRG/6go24VlCbo
+MdUzmpo0jl3QNeqf0S6e5ygEuqhAICRb9WMgVChbzBA7tjfsc+KCyXN10phofD9a
+XHd/DBA66w9Gs5GeCnRTCsVz0JMuIjGBQZBMAOe35CfSODdqU4n6CfEqEue8I7vm
+TEd+xtCB2UDE4CBLopL5JM6Oz3VM6lcVTKaLI4s1ahKO+xcYSqdB+vww/Hwm603O
+TvXQksPj0aYKBdJzOeCunCmFBA9kEeZ5I1Dx7HEx4MIHiBdZH4fnqFU=
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIICjjCCAXagAwIBAgIQBO6gqRnjXVd5w96sfVqFMTANBgkqhkiG9w0BAQsFADAm
+MSQwIgYDVQQDDBtrdWJlLWNzci1zaWduZXJfQDE3MTE1NDg2MzgwHhcNMjQwMzI3
+MTQyNzI3WhcNMjQwNDI2MTQxMDM4WjA3MRUwEwYDVQQKEwxzeXN0ZW06bm9kZXMx
+HjAcBgNVBAMTFXN5c3RlbTpub2RlOnJlY2lwaWVudDBZMBMGByqGSM49AgEGCCqG
+SM49AwEHA0IABKdF7aT7NBtq7OERhXx1YRlw9A+VP7pBVBUhkT2TJt/XdmcHoT2E
+ddkImV4XkonsP4XN0ENRTkTXtiOZn4UGo66jcjBwMA4GA1UdDwEB/wQEAwIHgDAT
+BgNVHSUEDDAKBggrBgEFBQcDATAMBgNVHRMBAf8EAjAAMB8GA1UdIwQYMBaAFG4n
+aYqeMUKIwb1HjE7Fl+Rnf+CJMBoGA1UdEQQTMBGCCXJlY2lwaWVudIcEwKh/YzAN
+BgkqhkiG9w0BAQsFAAOCAQEATBPGPCO7ZjzRPRyGgHf23KDxFcejcc3nTcZkXe1q
++RPA4HeWzkzPoHoWEfXq3jlVcTkpHj6kUPyRKIdhOeZ9LsxzzslMAbhGRRZ6qPRC
+Of4aBYhERhLzO+W16MNNcVl+VqfnGmhwJ/uYUOk41KwW8ledaKJ5QsUnWzn/7iTC
+9vdncCfEFCJW4pui0L0P2Llqw2pBs+o1cnSACPIbnipmpS1n38Bb/6IU2v3kLLq3
+/aUwVQHEf1E4jv+EV0Zcnh38CElyAJnY+1YMY+5XoptUecOhmXfoM2gVCvrkGqYF
+DE5YzjcKFnrB3veYx+wlevYY2peLmsCAGbBFu4vp9mlsEg==
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIICjjCCAXagAwIBAgIQBO6gqRnjXVd5w96sfVqFMTANBgkqhkiG9w0BAQsFADAm
+MSQwIgYDVQQDDBtrdWJlLWNzci1zaWduZXJfQDE3MTE1NDg2MzgwHhcNMjQwMzI3
+MTQyNzI3WhcNMjQwNDI2MTQxMDM4WjA3MRUwEwYDVQQKEwxzeXN0ZW06bm9kZXMx
+HjAcBgNVBAMTFXN5c3RlbTpub2RlOnJlY2lwaWVudDBZMBMGByqGSM49AgEGCCqG
+SM49AwEHA0IABKdF7aT7NBtq7OERhXx1YRlw9A+VP7pBVBUhkT2TJt/XdmcHoT2E
+ddkImV4XkonsP4XN0ENRTkTXtiOZn4UGo66jcjBwMA4GA1UdDwEB/wQEAwIHgDAT
+BgNVHSUEDDAKBggrBgEFBQcDATAMBgNVHRMBAf8EAjAAMB8GA1UdIwQYMBaAFG4n
+aYqeMUKIwb1HjE7Fl+Rnf+CJMBoGA1UdEQQTMBGCCXJlY2lwaWVudIcEwKh/YzAN
+BgkqhkiG9w0BAQsFAAOCAQEATBPGPCO7ZjzRPRyGgHf23KDxFcejcc3nTcZkXe1q
++RPA4HeWzkzPoHoWEfXq3jlVcTkpHj6kUPyRKIdhOeZ9LsxzzslMAbhGRRZ6qPRC
+Of4aBYhERhLzO+W16MNNcVl+VqfnGmhwJ/uYUOk41KwW8ledaKJ5QsUnWzn/7iTC
+9vdncCfEFCJW4pui0L0P2Llqw2pBs+o1cnSACPIbnipmpS1n38Bb/6IU2v3kLLq3
+/aUwVQHEf1E4jv+EV0Zcnh38CElyAJnY+1YMY+5XoptUecOhmXfoM2gVCvrkGqYF
+DE5YzjcKFnrB3veYx+wlevYY2peLmsCAGbBFu4vp9mlsEg==
+-----END CERTIFICATE-----`
